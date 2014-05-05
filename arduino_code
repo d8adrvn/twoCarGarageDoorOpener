@@ -1,0 +1,237 @@
+
+
+
+//*****************************************************************************
+// Two Car GarageDoorOpener
+// Arduino UNO with SmartThings Shield  and Seeed Relay Shield (vs) and 2 magnetic contact closures
+// Contact closures used in project are Directed Electronics, Inc. P/N 601 Magnetic Switch
+//   Install magnetic contact closures onto the door while at door is at closed (down) position.
+//   Wire magnetic contact closures in "NO" or normally open configuration
+// Garage door opener wired in parallel with garage door opener buttons
+//   My setup is wired in "normally closed" and arduino powers up in LOW output to keep door from being triggered after power outage
+//   Depending on your garage door opener, the configuration may be different
+// Timer library created by Simon Monk as modified by JChristensen  https://github.com/JChristensen/Timer
+//*****************************************************************************
+
+
+#include <SoftwareSerial.h>
+#include <SmartThings.h>
+#include <Timer.h>
+
+#define PIN_THING_RX    3
+#define PIN_THING_TX    2
+
+SmartThingsCallout_t messageCallout;    // call out function forward decalaration
+SmartThings smartthing(PIN_THING_RX, PIN_THING_TX, messageCallout);  // constructor
+
+Timer t;
+
+//set pin to switch led on SmartThings shield
+int ledPin = 13;
+int stateLED;           // state to track last set value of LED
+
+// set aprox. time it takes for door to traverse between open to close
+int traverseTime = 10000;
+
+//set up relays to control garage door #1
+int relayOne = 7;
+//set up relays to control garage door #2
+int relayTwo = 6;
+
+//contact sensor for Door 1 installed at closed position
+int sensorPinOne = 11;
+int sensorOneState = 0; //state to track last value of sensor one
+int currentSensorOne = 3;
+
+//contact sensor for door 2 installed at closed position
+int sensorPinTwo = 9;
+int sensorTwoState = 0; //state to track last value of sensor two
+int currentSensorTwo = 3;
+
+boolean isDebugEnabled;    // enable or disable debug in this example
+
+void setup()
+{
+  // setup default state of global variables
+  isDebugEnabled = true;
+
+  // set SmartThings Shield LED
+  smartthing.shieldSetLED(0, 0, 1); // set to off to start 
+  pinMode(ledPin, OUTPUT);   
+
+  //set door opener relay pins
+  pinMode(relayOne, OUTPUT); 
+  pinMode(relayTwo, OUTPUT); 
+  digitalWrite(relayOne, LOW);
+  digitalWrite(relayTwo, LOW);
+
+  //set sensor pins
+  pinMode (sensorPinOne, INPUT);
+  digitalWrite(sensorPinOne, HIGH); 
+  pinMode (sensorPinTwo, INPUT);
+  digitalWrite(sensorPinTwo, HIGH);
+  
+  // timed actions setup
+t.every(3000, sensorLogic);
+t.every(5L*60L*1000L, sensorReset);
+
+  if (isDebugEnabled)
+  { 
+    // setup debug serial port
+    Serial.begin(9600);         // setup serial with a baud rate of 9600
+    Serial.println("setup..");  // print out 'setup..' on start
+  }
+}
+void loop() 
+{
+  // run smartthing logic
+  smartthing.run();
+  t.update();
+}
+
+void sensorLogic()
+//run door sensor logic
+{
+  Serial.println("running sensor logic");
+  currentSensorOne = digitalRead(sensorPinOne);
+  currentSensorTwo = digitalRead(sensorPinTwo);
+  if (currentSensorOne==0 && currentSensorOne != sensorOneState)
+  {
+    smartthing.send("oneClosed");
+  }
+  if (currentSensorOne==1 && currentSensorOne != sensorOneState) 
+  {
+   smartthing.send("oneOpened");
+  }
+  if (currentSensorTwo==0 && currentSensorTwo != sensorTwoState) 
+  {
+    smartthing.send("twoClosed");
+  }
+  if (currentSensorTwo==1 && currentSensorTwo != sensorTwoState) 
+  {
+    smartthing.send("twoOpened");
+  }
+  sensorOneState = currentSensorOne;
+  sensorTwoState = currentSensorTwo;
+}
+
+void sensorReset()
+//cause sensors to update status to SmartThings
+{
+    sensorOneState=3;
+    sensorTwoState=3;
+    Serial.println("sensorReset to send update to SmartThings hub");
+}
+
+// Todo relay three switch to control garage door opener one light
+// Todo relay four as switch to control garage door opener two light
+
+//process incoming messages from SmartThings hub
+void messageCallout(String message)
+{
+  // if debug is enabled print out the received message
+  if (isDebugEnabled) 
+  {
+    Serial.print("Received message: '");
+    Serial.print(message);
+    Serial.println("' ");
+  }
+  currentSensorOne = digitalRead(sensorPinOne);
+  currentSensorTwo = digitalRead(sensorPinTwo);
+  if (message.equals("openOne") && (currentSensorOne==0)) 
+  {
+    smartthing.send("oneOpening");
+    smartthing.shieldSetLED(83, 1, 0); //Orange for relay one
+    digitalWrite(relayOne, HIGH);
+    delay(2000);
+    digitalWrite(relayOne, LOW);
+    smartthing.shieldSetLED(0, 0, 1);
+    delay (traverseTime); //gives door time to open before sensorLogic can check
+  }
+  if(message.equals("openOne") && (currentSensorOne==1)) 
+  {
+    //would only be triggered if smartthings hub was not in sync
+    smartthing.send("oneOpened");
+  }
+  if (message.equals("closeOne") && (currentSensorOne==1)) 
+  {
+    smartthing.send("oneClosing");
+    smartthing.shieldSetLED(83, 1, 0); //Orange for relay one
+    //Serial.println("start Relay One Func");
+    digitalWrite(relayOne, HIGH);
+    delay(2000);
+    digitalWrite(relayOne, LOW);
+    smartthing.shieldSetLED(0, 0, 1);
+    //door one closed message triggered when sensor comes in contact
+  }
+  if(message.equals("closeOne") && (currentSensorOne==0)) 
+  {
+    //would only be triggered if smartthings hub was not in sync
+    smartthing.send("oneClosed");
+    smartthing.send("Door One is already Closed");
+  }
+  if (message.equals("openTwo") && (currentSensorTwo==0)) 
+  {
+    smartthing.send("twoOpening");
+    smartthing.shieldSetLED(1, 0, 0); //red relay two
+    digitalWrite(relayTwo, HIGH);
+    delay(2000);
+    digitalWrite(relayTwo, LOW);
+    smartthing.shieldSetLED(0, 0, 1);
+    delay (traverseTime); // gives door time to open before sensorLogic runs again
+  }
+  if(message.equals("openTwo") && (currentSensorTwo==1)) 
+  {
+    //would only be triggered if smartthings hub was not in sync
+    smartthing.send("twoOpened");
+    smartthing.send("Door Two is Already Open");  
+  }
+  if (message.equals("closeTwo") && (currentSensorTwo==1)) 
+  {
+    smartthing.send("twoClosing");
+    smartthing.shieldSetLED(1, 0, 0); //red relay two
+    digitalWrite(relayTwo, HIGH);
+    delay(2000);
+    digitalWrite(relayTwo, LOW);
+    smartthing.shieldSetLED(0, 0, 1);
+    //door two closed message triggered when sensor comes in contact
+  }
+  if(message.equals("closeTwo") && (currentSensorTwo==0)) 
+  {
+    //would only be triggered if smartthings hub was not in sync
+    smartthing.send("twoClosed");
+    smartthing.send("Door Two is already Closed");
+  }
+  if (message.equals("lock"))
+  {
+    if (currentSensorOne==1)
+    {
+      smartthing.send("oneClosing");
+      smartthing.shieldSetLED(83, 1, 0); //Orange for relay one
+      //Serial.println("start Relay One Func");
+      digitalWrite(relayOne, HIGH);
+      delay(2000);
+      digitalWrite(relayOne, LOW);
+      smartthing.shieldSetLED(0, 0, 1);
+      //door one closed message triggered when sensor comes in contact
+    }
+    if (currentSensorTwo==1)
+    {
+      smartthing.send("twoClosing");
+      smartthing.shieldSetLED(1, 0, 0); //red relay two
+      digitalWrite(relayTwo, HIGH);
+      delay(2000);
+      digitalWrite(relayTwo, LOW);
+      smartthing.shieldSetLED(0, 0, 1);
+      //door two closed message triggered when sensor comes in contact
+    }
+    smartthing.send("locked");
+  }
+  if(message.equals("refresh"))
+  {
+    sensorOneState=3;
+    sensorTwoState=3;
+    sensorLogic();
+    smartthing.send("refreshed");
+  }
+}
