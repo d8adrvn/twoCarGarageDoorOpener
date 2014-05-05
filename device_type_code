@@ -1,0 +1,120 @@
+/**
+ *  Works with Arduino UNO connected to SmartThings Shield, Relay Sheild (4 relays) and 2 magnetic contact sensors
+ *  The two relays on the relay shield are connected in parallel to garage door opener buttons
+ *  The remaining two relays on relay shield are not used in this application.
+ *  Contact closures used in project are found on Amazon from Directed Electronics, Inc. P/N 601 Magnetic Switch
+ *	Sensors are installed on garage door in closed position
+ *  Author: stan@dotson.info  eieioThings.com
+ *  Date: 2013-10-13
+ *
+ *	Capability "Lock" used to lock the garage by closing both doorOne and doorTwo, if they are open.
+ *	By using the "Lock" capability, you can use popular smartapps to close garage doors, for example the Goodnight app
+ *  Custom Attributes: relayOne, relayTwo, update
+ *  Custom Commands: openDoorTwo, closeDoorTwo, refreshSensors
+ *	
+ * *  Copyright 2014 Stan Dotson
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ *  in compliance with the License. You may obtain a copy of the License at:
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
+ *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
+ *  for the specific language governing permissions and limitations under the License.
+ */
+ 
+ // for the UI
+metadata {
+	definition (name: "Two Door Garage Opener with Sensors v1", author: "stan@dotson.info") {
+		capability "Lock"
+        command "openDoorOne"
+		command "closeDoorOne"
+		command "openDoorTwo"
+		command "closeDoorTwo"
+		command "refreshSensors"
+	}
+
+	
+	tiles {
+		standardTile("relayOneTile", "device.relayOne", width: 2, height: 2, canChangeIcon: true, canChangeBackground: true) {
+			state "oneClosed", label: 'Door #1', action: "openDoorOne", icon: "st.doors.garage.garage-closed", backgroundColor: "#ffffff", nextState: "oneOpening"
+            state "oneOpened", label: 'Door #1', action: "closeDoorOne", icon: "st.doors.garage.garage-open", backgroundColor: "#ffffff", nextState: "oneClosing"
+            state "oneOpening", label: 'Door #1', icon: "st.doors.garage.garage-opening", backgroundColor: "#53a7c0"
+            state "oneClosing", label: 'Door #1', icon: "st.doors.garage.garage-closing", backgroundColor: "#53a7c0"
+        }
+		standardTile("relayTwoTile", "device.relayTwo", width: 1, height: 1, canChangeIcon: true, canChangeBackground: true) {
+			state "twoClosed", label: 'Door #2', action: "openDoorTwo", icon: "st.doors.garage.garage-closed", backgroundColor: "#ffffff", nextState: "twoOpening"
+            state "twoOpened", label: 'Door #2', action: "closeDoorTwo", icon: "st.doors.garage.garage-open", backgroundColor: "#ffffff", nextState: "twoClosing"
+            state "twoOpening", label: 'Door #2', action: "", icon: "st.doors.garage.garage-opening", backgroundColor: "#53a7c0"
+            state "twoClosing", label: 'Door #2', action: "", icon: "st.doors.garage.garage-closing", backgroundColor: "#53a7c0"
+        }     
+        standardTile("statusTile", "device.update", width: 1, height: 1, canChangeIcon: true, canChangeBackground: true) {
+        	state "refreshed", action: "refreshSensors", icon: "st.secondary.refresh", backgroundColor: "#ffffff", nextState: "checking"
+            state "checking", icon: "st.secondary.refresh", backgroundColor: "#53a7c0", nextState: "refreshed"
+        }
+        standardTile ("lockTile", "device.lock", width: 1, height: 1, canChangeIcon: true, canChangeBackground: true) {
+        	state "lock", label: 'Lock', action: "lock.lock", icon: "st.locks.lock.locked", backgroundColor: "#ffffff", nextState: "locking"
+            state "locking", label: 'Locking', action:"", icon: "st.locks.lock.locked", backgroundColor: "#53a7c0", nextState: "lock"
+        }
+      
+            
+		main "relayOneTile"
+		details(["relayOneTile","relayTwoTile", "statusTile", "lockTile"])
+        
+        // TODO: create tiles for switches 3 and 4
+	}
+}
+// handle commands
+def lock() {
+	log.debug "Executing 'lock' to close both garage doors, if they are open"
+    log.debug "Executing 'closeDoorOne'"
+	zigbee.smartShield(text: "lock").format()
+}
+
+def unlock() {
+}
+    
+def openDoorOne() {
+	log.debug "Executing 'openDoorOne'"
+    zigbee.smartShield(text:"openOne").format()
+}
+def closeDoorOne() {
+	log.debug "Executing 'closeDoorOne'"
+	zigbee.smartShield(text: "closeOne").format()
+}
+def openDoorTwo() {
+	log.debug "Executing 'openDoorTwo'"
+	zigbee.smartShield(text: "openTwo").format()
+}
+def closeDoorTwo() {
+	log.debug "Executing 'closeDoorTwo'"
+	zigbee.smartShield(text: "closeTwo").format()
+}
+def refreshSensors() {
+	log.debug "Executing 'refreshSensor'"
+    zigbee.smartShield(text: "refresh").format()
+}
+def parse(String description) {
+	log.debug "Parsing incoming'${description}'"
+    def value = zigbee.parse(description)?.text  
+    log.debug "Print value = '${value}'"
+	def isStateChange = value != "ping"  //evaluates whether value is something other than ping
+	def isPhysical = value in ["relayOneOn","relayOneOff","relayTwoOn","relayTwoOff"]  //evaluates device completed a physical action, e.g. relay switch
+    def displayed = value && isStateChange  //evaluates whether to display message 
+    def linkText = getLinkText(device)
+	def descriptionText = getDescriptionText(description, linkText, value)
+    def name = value in ["oneOpened","oneClosed","oneOpening","oneClosing"] ? "relayOne" : value in ["twoOpened", "twoClosed","twoOpening", "twoClosing"] ? "relayTwo" : value == "locked" ? "lock" : (value && value != "ping" ? "update" : null)
+	def result = createEvent (
+		name: name,
+        value: value,
+		isPhysical: isPhysical,
+		descriptionText: descriptionText,
+		isStateChange: isStateChange,
+		displayed: displayed
+        )   
+    log.debug "Parse returned ${result?.descriptionText}" 
+    return result   
+}
+
+//the message from the arduino will be written to the log output
