@@ -8,11 +8,27 @@
 //   Install magnetic contact closures onto the door while at door is at closed (down) position.
 //   Wire magnetic contact closures in "NO" or normally open configuration
 // Garage door opener wired in parallel with garage door opener buttons
-//   My setup is wired in "normally open" 
-//  The Seeed Relay Shield is Active Low so the arduino powers up in LOW output to keep door from being triggered after power outage
-//   Depending on your garage door opener, the configuration may be different
-// Timer library created by Simon Monk as modified by JChristensen  https://github.com/JChristensen/Timer
 //*****************************************************************************
+/// @note typical relay configuration and hook up to garage door opener button wires
+//   My setup is wired in "normally open" 
+///              ---------------
+///              |              |
+///              |              |___
+///              |     ( )      |   |  'NC' normally closed (not used)
+///              |              |   *
+///              |              |  /
+///              |     ( )      | /   'comn' common (connect one opener wire here)
+///              |              |
+///              |              |   *
+///              |     ( )      |___|  'NO' normally open (connect one opener wire here)
+///              |              |
+///              ---------------
+///
+//  The Seeed Relay Shield is Active HIGH so the arduino powers up in LOW output to keep door from being triggered after power outage
+//   Depending on your garage door opener, the configuration may be different
+/// *****************************************************************************
+// Timer library created by Simon Monk as modified by JChristensen  https://github.com/JChristensen/Timer
+//*******************************************************************************
 
 
 #include <SoftwareSerial.h>
